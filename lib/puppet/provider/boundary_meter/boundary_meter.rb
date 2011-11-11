@@ -34,6 +34,12 @@ module Boundary
       auth.gsub("\n","")
     end
 
+    def auth_headers(resource, username, apikey, json = false)
+      auth = auth_encode(resource, username, apikey)
+      return {"Authorization" => "Basic #{auth}", "Content-Type" => "application/json"} if json
+      return {"Authorization" => "Basic #{auth}"}    
+    end
+
     def build_url(resource, username, apikey, action)
       case action
       when :create
@@ -52,8 +58,7 @@ module Boundary
     def meter_exists?(resource, username, apikey)
       begin
         url = build_url(resource, username, apikey, :search)
-        auth = auth_encode(resource, username, apikey)
-        headers = {"Authorization" => "Basic #{auth}", "Content-Type" => "application/json"}
+        headers = auth_headers(resource, username, apikey, true)
 
         response = http_get_request(url, headers)
 
@@ -78,8 +83,7 @@ module Boundary
     def get_meter_id(resource, username, apikey)
       begin
         url = build_url(resource, username, apikey, :search)
-        auth = auth_encode(resource, username, apikey)
-        headers = {"Authorization" => "Basic #{auth}", "Content-Type" => "application/json"}
+        headers = auth_headers(resource, username, apikey, true)
 
         response = http_get_request(url, headers)
 
@@ -99,9 +103,8 @@ module Boundary
 
     def download_certificate_request(resource, username, apikey)
       begin
-        auth = auth_encode(resource, username, apikey)
         base_url = build_url(resource, username, apikey, :certificates)
-        headers = {"Authorization" => "Basic #{auth}"}
+        headers = auth_headers(resource, username, apikey)
 
         cert_response = http_get_request("#{base_url}/cert.pem", headers)
 
@@ -120,9 +123,8 @@ module Boundary
 
     def download_key_request(resource, username, apikey)
       begin
-        auth = auth_encode(resource, username, apikey)
         base_url = build_url(resource, username, apikey, :certificates)
-        headers = {"Authorization" => "Basic #{auth}"}
+        headers = auth_headers(resource, username, apikey)
 
         key_response = http_get_request("#{base_url}/key.pem", headers)
 
@@ -214,10 +216,10 @@ Puppet::Type.type(:boundary_meter).provide(:boundary_meter) do
       body = {:name => resource[:name]}.to_json
 
       Puppet.info("Creating meter #{resource[:name]}")
-      response = http_post_request(url, headers, body)
+      response = http_post_request(url, headers, body) unless meter_exists?(resource[:name], resource[:username], resource[:apikey])
 
-      download_certificate_request(resource[:name], resource[:username], resource[:apikey])
-      download_key_request(resource[:name], resource[:username], resource[:apikey])
+      download_certificate_request(resource[:name], resource[:username], resource[:apikey]) unless File.exists('/etc/bprobe/cert.pem')
+      download_key_request(resource[:name], resource[:username], resource[:apikey])         unless File.exists('/etc/bprobe/key.pem')
 
     rescue Exception => e
       raise Puppet::Error, "Could not create meter #{resource[:name]}, failed with #{e}"
@@ -225,7 +227,7 @@ Puppet::Type.type(:boundary_meter).provide(:boundary_meter) do
   end
 
   def exists?
-    meter_exists?(resource[:name], resource[:username], resource[:apikey])
+    meter_exists?(resource[:name], resource[:username], resource[:apikey]) && File.exists('/etc/bprobe/cert.pem') && File.exists('/etc/bprobe/key.pem')
   end
 
   def destroy

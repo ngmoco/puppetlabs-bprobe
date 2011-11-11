@@ -27,11 +27,23 @@ class bprobe {
   $collector      = $bprobe::params::collector
   $collector_port = $bprobe::params::collector_port
 
-  boundary_meter { $fqdn:
-    ensure   => present,
-    username => $username,
-    apikey   => $apikey,
+  file { '/usr/local/bin/provision_meter.sh':
+    mode => '0755',
+    source => 'puppet:///modules/bprobe/provision_meter.sh',
   }
+
+  exec { 'boundary_meter':
+    command => "/usr/local/bin/provision_meter.sh -a $username:$apikey -d /etc/bprobe",
+    creates => '/etc/bprobe/key.pem',
+    require => File['/etc/bprobe'],
+  }
+
+  # boundary_meter { $fqdn:
+  #   ensure   => present,
+  #   username => $username,
+  #   apikey   => $apikey,
+  #   provider => boundary_meter,
+  # }
 
   file { '/etc/bprobe/':
     ensure => directory,
@@ -68,6 +80,6 @@ class bprobe {
   service { 'bprobe':
     ensure  => running,
     enable  => true,
-    require => Package['bprobe'],
+    require => [Package['bprobe'], Exec['boundary_meter']],
   }
 }
